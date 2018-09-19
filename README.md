@@ -5,11 +5,12 @@
 
 The first, we prepare the corpus
 
-1. Download the [Wiki dump](https://dumps.wikimedia.org/hywiki/20180901/) e.g. https://dumps.wikimedia.org/hywiki/20180901/hywiki-20180901-pages-articles-multistream.xml.bz2 
+1. Download the [Wiki dump](https://dumps.wikimedia.org/hywiki/20180901/) (e.g. https://dumps.wikimedia.org/hywiki/20180901/hywiki-20180901-pages-articles-multistream.xml.bz2) 
 2. Extract the dump using [WikiExtractor](https://github.com/attardi/wikiextractor)
 3. Remove the remaining tags from exported files(in first and last lines) (strings starting with '<')
-4. Split data thre parts (70% - `train.txt`, 11% - `val.txt`, 15% - `test.txt`) and store under `languages/LANG_CODE/data` folder
-... points 3 and 4 can be done running ths script preparewikitext.py
+4. Split data thre parts (70% - `train.txt`, 15% - `val.txt`, 15% - `test.txt`) and store under `languages/LANG_CODE/data` folder
+
+points 3 and 4 can be done running preparewikitext.py
 
 Next we add some language specific configuration files:
 
@@ -30,7 +31,7 @@ The actual training is initiated by a command like this:
 
 
 
-    
+
 # Results
 
 For results need add at least one more language, generate model for 2 language and calculate accuracy.
