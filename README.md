@@ -4,7 +4,7 @@ Many languages have their own non-Latin alphabets but the web is full of content
 This is a tool to transliterate inconsistently romanized text. It is tested on Armenian (hy-AM)
 
 ## Problem description
- Every language has its own story, and these stories are usually not known outside their own communities. TODO
+ Every language has its own story, and these stories are usually not known outside their own communities. Wikipedia has similar stories for [Greek](https://en.wikipedia.org/wiki/Greeklish), [Persian](https://en.wikipedia.org/wiki/Fingilish). TODO 
 
 ## Source of the data
 
