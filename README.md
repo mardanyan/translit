@@ -14,7 +14,7 @@ Armenian Wikipedia as the easiest available large corpus of Armenian text. The d
 
 To generate the input sequences for the network we need to romanize the texts. We use probabilistic rules, as different people prefer different romanizations. Armenian alphabet has 39 characters, while Latin has only 26. Some of the Armenian letters are romanized in a unique way
 
-![image](images/hy-rules.jpg)
+![image](/images/hy-rules.jpg)
 
 ## Prepare the data for a language
 
