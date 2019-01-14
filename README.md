@@ -50,3 +50,8 @@ Trying to implement a good network architecture started from [Lasagne implementa
 # Results
 
 For results need add at least one more language, generate model for 2 language and calculate accuracy.
+
+## Future work
+First plans to understand what the system actually learned by visualizing its behavior on different cases. It is interesting to see how the residual connection performed and also if the network managed to discover some rules known from Armenian orthography.
+
+Next, want to bring this tool to the web. Make much smaller/faster model, translate it to Javascript, and probably wrap it in a Chrome extension.
