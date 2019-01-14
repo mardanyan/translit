@@ -1,5 +1,18 @@
 # Automatic transliteration
 
+Many languages have their own non-Latin alphabets but the web is full of content in those languages written in Latin letters, which makes it inaccessible to various NLP tools (e.g. automatic translation). Transliteration is the process of converting the romanized text back to the original writing system. In theory every language has a strict set of romanization rules, but in practice people do not follow the rules and most of the romanized content is hard to transliterate using rule based algorithms. We believe this problem is solvable using the state of the art NLP tools, and we demonstrate a high quality solution for Armenian based on recurrent neural networks.
+This is a tool to transliterate inconsistently romanized text. It is tested on Armenian (hy-AM)
+
+## Problem description
+ Every language has its own story, and these stories are usually not known outside their own communities. TODO
+
+## Source of the data
+
+Armenian Wikipedia as the easiest available large corpus of Armenian text. The dumps are available [here](https://dumps.wikimedia.org/hywiki)
+
+## Romanization rules
+
+To generate the input sequences for the network we need to romanize the texts. We use probabilistic rules, as different people prefer different romanizations. Armenian alphabet has 39 characters, while Latin has only 26. Some of the Armenian letters are romanized in a unique way
 
 ## Prepare the data for a language
 
