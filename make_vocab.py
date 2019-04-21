@@ -1,15 +1,12 @@
 # -*- coding: utf-8 -*
 
-from __future__ import print_function
-import numpy as np
-import theano
-import theano.tensor as T
-import lasagne
-import codecs
-import json
+
+# import numpy as np
+# import codecs
+# import json
 import argparse
 import utils
-from datetime import datetime
+# from datetime import datetime
 
 PRINT_FREQ = 1
 
@@ -25,6 +22,7 @@ def main():
 
     print("Making Vocabulary Files")
     utils.make_vocabulary_files(train_text, args.language, trans)
-    
+
+
 if __name__ == '__main__':
     main()

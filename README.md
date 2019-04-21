@@ -14,7 +14,7 @@ Armenian Wikipedia as the easiest available large corpus of Armenian text. The d
 
 To generate the input sequences for the network we need to romanize the texts. We use probabilistic rules, as different people prefer different romanizations. Armenian alphabet has 39 characters, while Latin has only 26. Some of the Armenian letters are romanized in a unique way
 
-![image](/images/hy-rules.jpg)
+
 
 ## Prepare the data for a language
 
@@ -42,18 +42,9 @@ Before training on the corpus we need to compute the vocabularies by the followi
 
 The actual training is initiated by a command like this:
 
-    python -u train.py --hdim 1024 --depth 2 --batch_size 200 --seq_len 30 --language hy-AM &> log.txt
+    python train.py --num_epochs 10
 
 
-## Network architecture
+## Predict
 
-Trying to implement a good network architecture started from [Lasagne implementation](https://github.com/Lasagne/Recipes/blob/master/examples/lstm_text_generation.py) of [Karpathy’s popular char-rnn network](https://github.com/karpathy/char-rnn). Char-rnn is a language model, it predicts the next character given the previous ones.
-
-# Results
-
-For results need add at least one more language, generate model for 2 language and calculate accuracy.
-
-## Future work
-First plans to understand what the system actually learned by visualizing its behavior on different cases. It is interesting to see how the residual connection performed and also if the network managed to discover some rules known from Armenian orthography.
-
-Next, want to bring this tool to the web. Make much smaller/faster model, translate it to Javascript, and probably wrap it in a Chrome extension.
+    python predict.py --model=languages/hy-AM/models/model.20-4-2019--20-47.hdim1024.depth2.seq_len30.bs100.time5.931.epoch10.loss0.082.h5
