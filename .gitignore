@@ -10,6 +10,11 @@ __pycache__/
 # IntelliJ
 .idea
 
+# Data
+languages/*/data/*.txt
+languages/*/models/*.h5
+languages/*/models/*.png
+
 # Distribution / packaging
 .Python
 build/

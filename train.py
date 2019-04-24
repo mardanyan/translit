@@ -12,23 +12,29 @@ import argparse
 import random
 import utils
 from datetime import datetime
+import matplotlib.pyplot as plt
+import sys
+
 
 
 def main():
+
     parser = argparse.ArgumentParser(description='''Train you model specifying parameters''')
-    parser.add_argument('--hdim', default=1024, type=int, help='Dimension of hidden layers')
+    parser.add_argument('--hdim', default=512, type=int, help='Dimension of hidden layers')
     parser.add_argument('--depth', default=2, type=int, help='Depth of network.')
-    parser.add_argument('--batch_size', default=100, type=int, help='Batch size for learning.')
-    parser.add_argument('--seq_len', default=30, type=int, help='Sequences size for splitting text for training.')
+    parser.add_argument('--batch_size', default=32, type=int, help='Batch size for learning.')
+    parser.add_argument('--seq_len', default=100, type=int, help='Sequences size for splitting text for training.')
     parser.add_argument('--language', default="hy-AM", help='Specify language to train.')
     # parser.add_argument('--grad_clip', default=100, type=int, help='')
     # parser.add_argument('--lr', default=0.01, type=float, help='')
-    parser.add_argument('--num_epochs', default=10, type=int, help='Epochs of train.')
+    parser.add_argument('--epochs', default=10, type=int, help='Epochs of train.')
     # parser.add_argument('--model', default=None, help='')
     parser.add_argument('--model_name_prefix', default='model', help='Used for model name prefix.')
     # parser.add_argument('--start_from', default=0, type=float, help='')
     parser.add_argument('--model_path', type=str, help='Specify model path to save, or will we saved under languages/<lang>models/model_name_prefix***')
     parser.add_argument('--validate', type=bool, default=True, help='Evaluate percentage of validation data. Default:True')
+    parser.add_argument('--data_size', type=int, default=5_000_000, help='Split date size in chars: Set 0 to train all data.')
+
     args = parser.parse_args()
    
     print("Loading Files")
@@ -36,9 +42,17 @@ def main():
     char_to_index, index_to_char, vocab_size, trans_to_index, index_to_trans, trans_vocab_size = \
         utils.load_vocabulary(language=args.language)
     (train_text, val_text, trans) = utils.load_language_data(language=args.language)
-    # TODO remove below splittings
-    train_text = train_text[:50000] # 226849593
-    val_text = val_text[:10000]       #34722649
+
+    # shuffle train data
+    train_text = train_text.split('։')
+    random.shuffle(train_text)
+    train_text = '։'.join(train_text)
+
+    if args.data_size != 0:
+        val_size = round(args.data_size / 0.7 * 0.3)
+        print("Data splitted, train:", args.data_size, ", val:", val_size)
+        train_text = train_text[:args.data_size] # 226_849_593
+        val_text = val_text[:val_size]       #34722649
 
     print("Building Network ...")
 
@@ -54,32 +68,34 @@ def main():
     # step_cnt = 0
     date_at_beginning = datetime.now()
     # last_time = date_at_beginning
-    train_text = train_text.split('։')
-    random.shuffle(train_text)
-    train_text = '։'.join(train_text)
+
     # avg_cost = 0.0
     # count = 0
     # num_of_samples = 0
     # num_of_chars = 0
     (x_train, y_train) = utils.data_generator(train_text, args.seq_len, trans, trans_to_index, char_to_index, is_train=True)
     print("Training ...")
-    history = model.fit(x_train, y_train, validation_split=0.1, epochs=args.num_epochs, batch_size=args.batch_size)
+    history = model.fit(x_train, y_train, validation_split=0.1, epochs=args.epochs, batch_size=args.batch_size)
 
     print(history.history)
 
     loss = history.history["loss"][-1]
 
     time_now = datetime.now()
+
     if args.model_path:
         file_name = args.model_path
     else:
         dir = 'languages/{}/models/'.format(args.language)
         if not os.path.exists(dir):
             os.mkdir(dir)
-        file_name = 'languages/{}/models/{}.{}-{}-{}--{}-{}.hdim{}.depth{}.seq_len{}.bs{}.time{:.3f}.epoch{}.loss{:.3f}.h5'.format(
+        image_name = 'languages/{}/models/{}.{}-{}-{}--{}-{}.hdim{}.depth{}.seq_len{}.bs{}.time{:.3f}.epoch{}.loss{:.3f}'.format(
             args.language, args.model_name_prefix, str(time_now.day), str(time_now.month), str(time_now.year),
             str(time_now.hour), str(time_now.minute), args.hdim, args.depth, args.seq_len, args.batch_size, (time_now -
-            date_at_beginning).total_seconds()/60, args.num_epochs, loss)
+            date_at_beginning).total_seconds()/60, args.epochs, loss)
+        file_name = image_name + '.h5'
+
+
 
     model.save(file_name)
     print('Model saved:', file_name)
@@ -92,6 +108,26 @@ def main():
     else:
         print("Validation disabled.")
 
+    print("Save accuracy image " + image_name + '_acc.png')
+
+    plt.plot(history.history['acc'])
+    plt.plot(history.history['val_acc'])
+    plt.title('Model accuracy')
+    plt.ylabel('Accuracy')
+    plt.xlabel('Epoch')
+    plt.legend(['acc', 'val_acc'], loc='upper left')
+    #plt.show()
+    plt.savefig(image_name + '_acc.png')
+
+    print("Save accuracy image " + image_name + '_loss.png')
+    plt.clf()
+    plt.plot(history.history['loss'])
+    plt.plot(history.history['val_loss'])
+    plt.title('Model loss')
+    plt.ylabel('Loss')
+    plt.xlabel('Epoch')
+    plt.legend(['loss', 'val_loss'], loc='upper left')
+    plt.savefig(image_name + '_loss.png')
 
 
     #     sample_cost = train(x, np.reshape(y,(-1,vocab_size)))

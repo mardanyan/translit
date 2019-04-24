@@ -194,7 +194,7 @@ def main():
             if x.lower() == 'exit':
                 return
             text, char_list = translate_to_origin(model, x, args.language)
-            print("Original:   ", text)
+            print("Original:   ", x)
             print("Translated: ", text)
             print("Translated: ", char_list)
 

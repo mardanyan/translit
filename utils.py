@@ -11,6 +11,7 @@ import random
 # from lasagne.init import Orthogonal, Normal
 import functools
 import time
+import glob
 
 from keras.layers import Dense, Input, LSTM, Concatenate, Reshape, Bidirectional, Activation, Embedding, Conv1D, GlobalMaxPool1D, Dropout
 from keras.models import Model
@@ -187,11 +188,23 @@ def load_vocabulary(language):
 #         sentence += index_to_character[np.argmax(i)]
 #     return sentence
 
+
+def open_file_list(file_list):
+    corpus = ""
+
+    for file_path in file_list:
+        corpus += codecs.open(file_path, encoding='utf-8').read()
+        # with open(file_path) as f_input:
+        #     corpus.append(f_input.read())
+
+    return corpus
+
+
 def load_language_data(language, is_train = True):
 
-    TEST_DATA_PATH = 'languages/' + language + '/data/test.txt'
-    VALIDATION_DATA_PATH = 'languages/' + language + '/data/val.txt'
-    TRAIN_DATA_PATH = 'languages/' + language + '/data/train.txt'
+    TEST_DATA_PATH_LIST = glob.glob('languages/' + language + '/data/test*.txt')
+    VALIDATION_DATA_PATH_LIST = glob.glob('languages/' + language + '/data/val*.txt')
+    TRAIN_DATA_PATH_LIST = glob.glob('languages/' + language + '/data/train*.txt')
     long_letters = json.loads(codecs.open('languages/' + language + '/long_letters.json','r',encoding='utf-8').read())
     long_letter_mapping = { long_letters[i] : chr(ord(u'\u2002') + i) for i in range(len(long_letters)) }
     trans = json.loads(codecs.open('languages/' + language + '/transliteration.json','r',encoding='utf-8').read())
@@ -202,8 +215,10 @@ def load_language_data(language, is_train = True):
     del tmp_trans
 
     if is_train:
-        train_text = codecs.open(TRAIN_DATA_PATH, encoding='utf-8').read()
-        val_text = codecs.open(VALIDATION_DATA_PATH, encoding='utf-8').read()
+        # train_text = codecs.open(TRAIN_DATA_PATH, encoding='utf-8').read()
+        train_text = open_file_list(TRAIN_DATA_PATH_LIST)
+        # val_text = codecs.open(VALIDATION_DATA_PATH, encoding='utf-8').read()
+        val_text = open_file_list(VALIDATION_DATA_PATH_LIST)
 
         for letter in long_letter_mapping:
             train_text = train_text.replace(letter, long_letter_mapping[letter])
@@ -211,7 +226,8 @@ def load_language_data(language, is_train = True):
 
         return train_text, val_text, trans
     else:
-        test_text = codecs.open(TEST_DATA_PATH, encoding='utf-8').read()
+        # test_text = codecs.open(TEST_DATA_PATH, encoding='utf-8').read()
+        test_text = open_file_list(TEST_DATA_PATH_LIST)
         for letter in long_letter_mapping:
             test_text = test_text.replace(letter, long_letter_mapping[letter])
         long_letter_reverse_mapping = {long_letter_mapping[i]: i for i in long_letter_mapping}
@@ -300,18 +316,18 @@ def load_language_data(language, is_train = True):
 
 def define_model(hdim, depth, trans_vocab_size=0, vocab_size=0, is_train = False):
     input_input = Input(shape=(None, trans_vocab_size))
-    network = input_input
+    layer = input_input
 
     for _ in range(depth):
-        network = Bidirectional(LSTM(hdim, return_sequences=True, return_state=False))(network)
-        network = Dense(hdim)(network)
+        layer = Bidirectional(LSTM(hdim, return_sequences=True, return_state=False))(layer)
+        layer = Dense(hdim)(layer)
 
-    network = Bidirectional(LSTM(hdim, return_sequences=True, return_state=False))(network)
-    network = Dense(hdim)(network)
-    network = Concatenate()([network, input_input])
-    network = Dense(vocab_size, activation='softmax')(network)
+    layer = Bidirectional(LSTM(hdim, return_sequences=True, return_state=False))(layer)
+    layer = Dense(hdim)(layer)
+    layer = Concatenate()([layer, input_input])
+    layer = Dense(vocab_size, activation='softmax')(layer)
 
-    model = Model(inputs=input_input, outputs=network)
+    model = Model(inputs=input_input, outputs=layer)
 
     model.compile(optimizer="adam", # rmsprop,
                   loss="categorical_crossentropy",
@@ -480,7 +496,7 @@ def is_delimiter(c):
     return c in ['\n', '\t', ' ']
 
 
-def chunk_parse(chunk, seq_len, transliteration, trans_to_index, char_to_index, is_train = False):
+def chunk_parse(chunk, seq_len, transliteration, trans_to_index, char_to_index, is_train=False):
     """
 
     :param chunk:
@@ -491,48 +507,94 @@ def chunk_parse(chunk, seq_len, transliteration, trans_to_index, char_to_index, 
     :param is_train:
     :return:
     """
-
     trans_vocab_size = len(trans_to_index)
     vocab_size = len(char_to_index)
+    chunk_size = len(chunk)
+
+    # this is for guarant after translation double symbol letters will not increase seq_len size
+    seq_len_croped = seq_len * 0.9
 
     # split by delimiters
-    delimiters = [u'']
-    words = []
+    # delimiters = [u'']
+    # words = []
+    # word = ''
+    # i = 0
+    # chunk_size = len(chunk)
+    # while i < chunk_size:
+    #     if i % 10000 == 0:
+    #         print(i / chunk_size, "% split to words.", i, chunk_size, end='\r')
+    #     if is_delimiter(chunk[i]):
+    #         if word != '':
+    #             words.append(word)
+    #         word = ''
+    #         delimiter = chunk[i]
+    #         while i+1 < len(chunk) and is_delimiter(chunk[i+1]):
+    #             i += 1
+    #             delimiter += chunk[i]
+    #         delimiters.append(delimiter)
+    #     else:
+    #         word += chunk[i]
+    #     i += 1
+    # if word != '':
+    #     words.append(word)
+    #
+    # # collect extracted words into char sequences with max size seq_len
+    # sequences = []
+    # s = ""
+    # sequence_delimiters = [u'']
+    # for (word, delimiter) in zip(words, delimiters):
+    #     if len(s) + len(word) <= seq_len:
+    #         s += delimiter + word
+    #     elif len(s) != 0:
+    #         sequences.append(s);
+    #         s = word
+    #         sequence_delimiters.append(delimiter)
+    # if s != '':
+    #     sequences.append(s)
+
+    print("Spliting to sequences.")
+
+    seqs = []
     word = ''
     i = 0
-    while i < len(chunk):
+    seq = ''
+    while i < chunk_size:
+        if i % 100000 == 0:
+            print(i / chunk_size, "% splitted to sequences.", end='\r')
         if is_delimiter(chunk[i]):
-            if word != '':
-                words.append(word)
-            word = ''
+            # if word != '':
+            #         words.append(word)
+            # word = ''
             delimiter = chunk[i]
-            while i+1 < len(chunk) and is_delimiter(chunk[i+1]):
+            while i + 1 < len(chunk) and is_delimiter(chunk[i + 1]):
                 i += 1
                 delimiter += chunk[i]
-            delimiters.append(delimiter)
+            if len(seq) + len(word) + len(delimiter) < seq_len_croped:
+                seq += word + delimiter
+            else:
+                seqs.append(seq)
+                seq = word + delimiter
+            word = ''
+            # delimiters.append(delimiter)
         else:
             word += chunk[i]
         i += 1
-    if word != '':
-        words.append(word)
 
-    # collect extracted words into char sequences with max size seq_len
-    sequences = []
-    s = ""
-    sequence_delimiters = [u'']
-    for (word, delimiter) in zip(words, delimiters):
-        if len(s) + len(word) <= seq_len:
-            s += delimiter + word
-        elif len(s) != 0:
-            sequences.append(s);
-            s = word
-            sequence_delimiters.append(delimiter)
-    if s != '':
-        sequences.append(s)
+    if word != '':
+        if len(seq) + len(word) < seq_len:
+            seq += word
+            word = ''
+    if seq != '':
+        seqs.append(seq)
+        seq = ''
+
+    print()
+    print("Creating samples.")
 
     # create list of groups with 3 elements, original/translated/non valid chars
     samples = []
-    for seq in sequences:
+    # for seq in sequences:
+    for seq in seqs:
         # skip processing sequence if native letters less than 30 percent
         native_letter_count = sum([1 for c in seq if isNativeLetter(c, transliteration)])
         if is_train and native_letter_count * 3 < len(seq):
@@ -564,41 +626,55 @@ def chunk_parse(chunk, seq_len, transliteration, trans_to_index, char_to_index, 
         natives.append(native)
         non_valids_list.append(non_valids)
         '''
+
+    del seqs
+
     if is_train:
-        samples.sort(key=lambda x: len(x[0]), reverse=True)
+        print("Sorting.")
+        #samples.sort(key=lambda x: len(x[0]), reverse=True)
 
-        # buckets are key/list of samples
-        buckets = {}
-        for tmp in samples:
-            if len(tmp[0]) not in buckets.keys():
-                buckets[len(tmp[0])] = []
-            buckets[len(tmp[0])].append(tmp)
+        # print("Creating buckets.")
+        # # buckets are key/list of samples
+        # buckets = {}
+        # for tmp in samples:
+        #     if len(tmp[0]) not in buckets.keys():
+        #         buckets[len(tmp[0])] = []
+        #     buckets[len(tmp[0])].append(tmp)
+        #
+        # del samples
+        #
+        # for i in buckets:
+        #     random.shuffle(buckets[i])
+        #
+        # # # each element of batches is list of tuple 3 elements as samples member
+        # batches = []
+        # for i in buckets.keys():
+        #     batches.extend(buckets[i][:])
+        #     # j = 0
+        #     # while j < len(buckets[i]):
+        #     #     batches.append(list(buckets[i][j:j+50]))
+        #     #     j += 50
+        # del buckets
+        #
+        # print("Creating np matrices.")
+        # # np_batches = []
+        #
+        # # make one-hot vector
+        # # for batch in batches:
+        # x = np.zeros((len(batches), len(batches[0][0]), trans_vocab_size))
+        # y = np.zeros((len(batches), len(batches[0][0]), vocab_size))
+        # for i in range(len(batches)):
+        #     for j in range(len(batches[i][0])):
+        #         x[i, j, trans_to_index[batches[i][0][j]]] = 1
+        #         y[i, j, char_to_index[batches[i][1][j]]] = 1
 
-        del samples
-        for i in buckets:
-            random.shuffle(buckets[i])
 
-        # # each element of batches is list of tuple 3 elements as samples member
-        batches = []
-        for i in buckets.keys():
-            batches.extend(buckets[i][:])
-            # j = 0
-            # while j < len(buckets[i]):
-            #     batches.append(list(buckets[i][j:j+50]))
-            #     j += 50
-        del buckets
-
-        # np_batches = []
-
-        # make one-hot vector
-        # for batch in batches:
-        x = np.zeros((len(batches), len(batches[0][0]), trans_vocab_size))
-        y = np.zeros((len(batches), len(batches[0][0]), vocab_size))
-        for i in range(len(batches)):
-            for j in range(len(batches[i][0])):
-                x[i, j, trans_to_index[batches[i][0][j]]] = 1
-                y[i, j, char_to_index[batches[i][1][j]]] = 1
-        # np_batches.append((x, y))
+        x = np.zeros((len(samples), seq_len, trans_vocab_size))
+        y = np.zeros((len(samples), seq_len, vocab_size))
+        for i in range(len(samples)):
+            for j in range(min(len(samples[i][0]), seq_len)):
+                x[i, j, trans_to_index[samples[i][0][j]]] = 1
+                y[i, j, char_to_index[samples[i][1][j]]] = 1
 
         # return np_batches
         return x, y
@@ -630,7 +706,7 @@ def chunk_parse(chunk, seq_len, transliteration, trans_to_index, char_to_index, 
         for batch in batches:
             indices = np.zeros( len(batch) )
             delimiters = [0] * len(batch)
-            x = np.zeros( (len(batch), len(batch[0][0][0]), trans_vocab_size) )
+            x = np.zeros((len(batch), len(batch[0][0][0]), trans_vocab_size) )
             y = np.zeros( (len(batch), len(batch[0][0][0]), vocab_size) )
             non_vals.append([])
             for i in range(len(batch)):
