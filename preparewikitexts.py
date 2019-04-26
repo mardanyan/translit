@@ -1,13 +1,7 @@
 
 
 from __future__ import print_function
-import numpy as np
-import theano
-import codecs
-import json
 import argparse
-#import utils
-from datetime import datetime
 
 import shutil
 import glob
@@ -15,7 +9,7 @@ import glob
 def main():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--sourcepath', default='/home/tigran/rau/translit/files/text/*/wiki_*')
-	parser.add_argument('--destpath', default='/home/tigran/rau/translit/translit/languages/hy-AM/data/all.txt')
+	parser.add_argument('--destpath', default='/home/tigran/rau/translit/translit/languages/hy/data/all.txt')
 	args = parser.parse_args()
 
 	outfilenametmp = args.destpath + "_tmp"

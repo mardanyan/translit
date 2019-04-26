@@ -165,7 +165,7 @@ def translate_to_origin(model, text, language):
 
 def main():
     parser = argparse.ArgumentParser(description='''''')
-    parser.add_argument('--language', default='hy-AM')
+    parser.add_argument('--language', default='hy')
 
     parser.add_argument('--model', type=str)
     parser.add_argument('--text', type=str)

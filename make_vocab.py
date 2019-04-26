@@ -14,7 +14,7 @@ PRINT_FREQ = 1
 def main():
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--language', default='hy-AM')
+    parser.add_argument('--language', default='hy')
     args = parser.parse_args()
    
     print("Loading Files")

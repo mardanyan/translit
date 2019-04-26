@@ -2,20 +2,20 @@
 
 # from __future__ import print_function
 import numpy as np
-# import theano
-# import theano.tensor as T
-# import lasagne
 import codecs
 import json
 import random
-# from lasagne.init import Orthogonal, Normal
+
 import functools
 import time
 import glob
+from datetime import datetime
+import os
+import matplotlib.pyplot as plt
 
-from keras.layers import Dense, Input, LSTM, Concatenate, Reshape, Bidirectional, Activation, Embedding, Conv1D, GlobalMaxPool1D, Dropout
+from keras.layers import Dense, Input, LSTM, Concatenate, Bidirectional
 from keras.models import Model
-
+import yaml
 
 def timeit(func):
     @functools.wraps(func)
@@ -27,9 +27,10 @@ def timeit(func):
             func.__name__, int(elapsedTime * 1000)))
     return newfunc
 
-#Lasagne Seed for Reproducibility
 random.seed(1)
-# lasagne.random.set_rng(np.random.RandomState(1))
+
+EMPTY_CHAR = u'\u2000'
+UNKNOWN_CHAR = '#'
 
 def isNativeLetter(s, transliteration):
 
@@ -60,7 +61,7 @@ def valid(transliteration, sequence):
         if c in valids:
             ans.append(c)
         else:
-            ans.append('#')
+            ans.append(UNKNOWN_CHAR)
             non_valids.append(c)
     return ans, non_valids
 
@@ -76,18 +77,19 @@ def toTranslit(prevc, c, nextc, trans):
     :return:
     """
 
+    # TODO analyze, move into file this kink of specifications
     if not isNativeLetter(c, trans):
         return c
 
-    # Armenian Specific Snippet
-    if c == u'ո':
-        if isNativeLetter(prevc, trans):
-            return u'o'
-        return u'vo'
-    if c == u'Ո':
-        if isNativeLetter(prevc, trans):
-            return u'O'
-        return u'Vo'
+    # # Armenian Specific Snippet
+    # if c == u'ո':
+    #     if isNativeLetter(prevc, trans):
+    #         return u'o'
+    #     return u'vo'
+    # if c == u'Ո':
+    #     if isNativeLetter(prevc, trans):
+    #         return u'O'
+    #     return u'Vo'
 
     x = random.random()
     s = 0
@@ -131,8 +133,8 @@ def make_vocabulary_files(data, language, transliteration):
 
         translit = valid(transliteration, translit)[0]
         for i in range(len(native)):
-            if translit[i] == '#':
-                native[i] = '#'
+            if translit[i] == UNKNOWN_CHAR:
+                native[i] = UNKNOWN_CHAR
         chars = chars.union(set(native))
         trans_chars = trans_chars.union(set(translit))
         print(str(100.0*pointer/len(data)) + "% done       ", end='\r')
@@ -193,7 +195,7 @@ def open_file_list(file_list):
     corpus = ""
 
     for file_path in file_list:
-        corpus += codecs.open(file_path, encoding='utf-8').read()
+        corpus += open(file_path, encoding='utf-8').read()
         # with open(file_path) as f_input:
         #     corpus.append(f_input.read())
 
@@ -284,8 +286,8 @@ def load_language_data(language, is_train = True):
 #
 #         (translit,non_valids) = valid(transliteration, translit)
 #         for ind in range(len(native)):
-#             if translit[ind] == '#':
-#                 native[ind] = '#'
+#             if translit[ind] == UNKNOWN_CHAR:
+#                 native[ind] = UNKNOWN_CHAR
 #
 #         x = np.zeros((len(native), trans_vocab_size))
 #         y = np.zeros((len(native), vocab_size))
@@ -617,8 +619,8 @@ def chunk_parse(chunk, seq_len, transliteration, trans_to_index, char_to_index, 
         # validate both texts, changing unknown chars with #
         translit, non_valids = valid(transliteration, translit)
         for ind in range(len(native)):
-            if translit[ind] == '#':
-                native[ind] = '#'
+            if translit[ind] == UNKNOWN_CHAR:
+                native[ind] = UNKNOWN_CHAR
         samples.append((translit, native, non_valids))
 
         '''
@@ -721,7 +723,7 @@ def chunk_parse(chunk, seq_len, transliteration, trans_to_index, char_to_index, 
         return np_batches, non_vals
 
 
-def text_to_one_hot_matrix(text, language='hy-AM'):
+def text_to_one_hot_matrix(text, language='hy'):
     char_to_index, _, vocab_size, trans_to_index, _, trans_vocab_size = load_vocabulary(language)
     trans = json.loads(codecs.open('languages/' + language + '/transliteration.json', 'r', encoding='utf-8').read())
     length = len(text)
@@ -1293,3 +1295,78 @@ def data_generator(data, seq_len, transliteration, trans_to_index, char_to_index
 #         return concat
 
 
+def get_model_dir_path(args):
+    if args.model_path:
+        dir =  args.model_path
+    else:
+        now = datetime.now()
+        dir = 'languages/{}/models/{}-{}-{}--{}-{}'.format(args.language, str(now.day), str(now.month), str(now.year), str(now.hour), str(now.minute))
+    if not os.path.exists(dir):
+        os.mkdir(dir)
+    return dir
+
+
+def get_model_file_path(args, begin_fit_time, loss):
+    dir = get_model_dir_path(args)
+    now = datetime.now()
+    file = '{}.hdim{}.depth{}.seq_len{}.bs{}.time{:.3f}.epoch{}.loss{:.3f}.h5'.format(
+        args.prefix, args.hdim, args.depth, args.seq_len, args.batch_size, (now - begin_fit_time).total_seconds() / 60, args.epoch, loss)
+    return dir + '/' + file
+
+
+def save_acc_loss_results(args, history, save_or_show=True):
+    dir = get_model_dir_path(args)
+
+    plt.clf()
+    plt.plot(history.history['acc'])
+    plt.plot(history.history['val_acc'])
+    plt.title('Model accuracy')
+    plt.ylabel('Accuracy')
+    plt.xlabel('Epoch')
+    plt.legend(['acc', 'val_acc'], loc='upper left')
+    if save_or_show:
+        acc_name = dir + '/accuracy.png'
+        print("Saving accuracy image: " + acc_name)
+        plt.savefig(acc_name)
+    else:
+        plt.show()
+
+    plt.clf()
+    plt.plot(history.history['loss'])
+    plt.plot(history.history['val_loss'])
+    plt.title('Model loss')
+    plt.ylabel('Loss')
+    plt.xlabel('Epoch')
+    plt.legend(['loss', 'val_loss'], loc='upper left')
+    if save_or_show:
+        val_name = dir + '/val.png'
+        print("Saving val image: " + val_name)
+        plt.savefig(val_name)
+    else:
+        plt.show()
+
+
+def write_results_file(args, history, train_text, val_text):
+    dir = get_model_dir_path(args)
+    file_name = dir + "/results.yaml"
+
+    print(type(history.history['acc']))
+
+    data = dict(
+        hdim=args.hdim,
+        depth=args.depth,
+        batch_size=args.batch_size,
+        seq_len=args.seq_len,
+        language=args.language,
+        epoch=args.epoch,
+        train_size=len(train_text),
+        val_size=len(val_text),
+        acc=[float(x) for x in history.history['acc']],
+        val_acc=[float(x) for x in history.history['val_acc']],
+        loss=[float(x) for x in history.history['loss']],
+        val_loss=[float(x) for x in history.history['val_loss']],
+    )
+    print (history.history['acc'])
+
+    with open(file_name, 'w') as outfile:
+        yaml.dump(data, outfile, default_flow_style=False)
