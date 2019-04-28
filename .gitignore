@@ -14,7 +14,8 @@ __pycache__/
 languages/*/data/*.txt
 languages/*/models/*-*-*--*-*
 data_preprocessed/
-data/*/
+data/
+models/
 
 # Distribution / packaging
 .Python

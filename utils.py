@@ -5,6 +5,7 @@ import numpy as np
 import codecs
 import json
 import random
+import sys
 
 import functools
 import time
@@ -13,8 +14,6 @@ from datetime import datetime
 import os
 import matplotlib.pyplot as plt
 
-from keras.layers import Dense, Input, LSTM, Concatenate, Bidirectional
-from keras.models import Model
 import yaml
 
 def timeit(func):
@@ -42,18 +41,25 @@ def isNativeLetter(s, transliteration):
     return True
 
 
-def valid(transliteration, sequence):
+def get_valid_chars(transes):
+    """
+    Collect keys of mapping, 0-10 numbers, u'\u2000', u'\u2001', ';', ':', '-', ',', ' ', '\n', '\t'
+    :param transes:
+    :return:
+    """
+    valids = [u'\u2000', u'\u2001', ';', ':', '-', ',', ' ', '\n', '\t'] + \
+             [chr(ord('0') + i) for i in range(10)] + \
+             list(set(''.join([''.join([s for s in transes[c]]) for c in transes])))
+    return valids
+
+
+def validate(valids, sequence):
     """
     Replaces all non given characters with '#'
     :param transliteration:
     :param sequence:
     :return:
     """
-
-    valids = [u'\u2000', u'\u2001', ';', ':', '-', ',', ' ', '\n', '\t'] + \
-             [chr(ord('0') + i) for i in range(10)] + \
-             list(set(''.join([''.join([s for s in transliteration[c]]) for c in transliteration])))
-
     ans = []
     non_valids = []
 
@@ -101,83 +107,22 @@ def toTranslit(prevc, c, nextc, trans):
     print(c, s, "error")
 
 
-@timeit
-def make_vocabulary_files(data, language, transliteration):
-
-    ### Makes jsons for future mapping of letters to indices and vice versa
-
-    pointer = 0
-    done = False
-    s_l = 100000
-    chars = set()
-    trans_chars = set()
-    data = ' \t' + u'\u2001'  + data # to get these symbols in vocab
-    while not done:
-        new_p = min(pointer + s_l ,len(data))
-        raw_native = data[pointer : new_p]
-        if new_p != len(data):
-            pointer = new_p
-            raw_native = ' ' + raw_native + ' '
-        else:
-            raw_native = ' ' + raw_native + ' '
-            done = True
-        native = []
-        translit = []
-        for ind in range(1,len(raw_native)-1):
-            trans_char = toTranslit(raw_native[ind-1], raw_native[ind], raw_native[ind+1], transliteration)
-            translit.append(trans_char[0])
-            native.append(raw_native[ind])
-            if len(trans_char) > 1:
-                native.append(u'\u2000')
-                translit.append(trans_char[1])
-
-        translit = valid(transliteration, translit)[0]
-        for i in range(len(native)):
-            if translit[i] == UNKNOWN_CHAR:
-                native[i] = UNKNOWN_CHAR
-        chars = chars.union(set(native))
-        trans_chars = trans_chars.union(set(translit))
-        print(str(100.0*pointer/len(data)) + "% done       ", end='\r')
-
-    chars = list(chars)
-    char_to_index = { chars[i] : i for i in range(len(chars)) }
-    index_to_char = { i : chars[i] for i in range(len(chars)) }
-
-    open('languages/' + language + '/char_to_index.json','w').write(json.dumps(char_to_index))
-    open('languages/' + language + '/index_to_char.json','w').write(json.dumps(index_to_char))
-
-    trans_chars = list(trans_chars)
-    trans_to_index = { trans_chars[i] : i for i in range(len(trans_chars)) }
-    index_to_trans = { i : trans_chars[i] for i in range(len(trans_chars)) }
-    trans_vocab_size = len(trans_chars)
-
-    open('languages/' + language + '/trans_to_index.json','w').write(json.dumps(trans_to_index))
-    open('languages/' + language + '/index_to_trans.json','w').write(json.dumps(index_to_trans))
-
 # upper methods used in make_vocab.py
 ########################################################################
 # below for train.py
 
 
-def load_vocabulary(language):
+def open_file_list(file_list, data_size):
+    corpus = ""
 
-    ### Loads vocabulary mappings from specified json files
+    for file_path in file_list:
+        corpus += open(file_path, encoding='utf-8').read()
+        if len(corpus) >= data_size:
+            return corpus[:data_size]
+        # with open(file_path) as f_input:
+        #     corpus.append(f_input.read())
 
-    char_to_index = json.loads(open('languages/' + language + '/char_to_index.json').read())
-    char_to_index = { i : int(char_to_index[i]) for i in char_to_index}
-
-    index_to_char = json.loads(open('languages/' + language + '/index_to_char.json').read())
-    index_to_char = { int(i) : index_to_char[i] for i in index_to_char}
-    vocab_size = len(char_to_index)
-
-
-    trans_to_index = json.loads(open('languages/' + language + '/trans_to_index.json').read())
-    trans_to_index = { i : int(trans_to_index[i]) for i in trans_to_index}
-
-    index_to_trans = json.loads(open('languages/' + language + '/index_to_trans.json').read())
-    index_to_trans = { int(i) : index_to_trans[i] for i in index_to_trans}
-    trans_vocab_size = len(trans_to_index)
-    return char_to_index, index_to_char, vocab_size, trans_to_index, index_to_trans, trans_vocab_size
+    return corpus
 
 # def one_hot_matrix_to_sentence(data, index_to_character):
 #
@@ -189,17 +134,6 @@ def load_vocabulary(language):
 #     for i in data:
 #         sentence += index_to_character[np.argmax(i)]
 #     return sentence
-
-
-def open_file_list(file_list):
-    corpus = ""
-
-    for file_path in file_list:
-        corpus += open(file_path, encoding='utf-8').read()
-        # with open(file_path) as f_input:
-        #     corpus.append(f_input.read())
-
-    return corpus
 
 
 def load_language_data(language, is_train = True):
@@ -235,267 +169,84 @@ def load_language_data(language, is_train = True):
         long_letter_reverse_mapping = {long_letter_mapping[i]: i for i in long_letter_mapping}
 
         return test_text, trans, long_letter_reverse_mapping
-        
-# def gen_data(p, seq_len, batch_size, data, transliteration, trans_to_index, char_to_index, is_train = True):
-#
-#     # Generates training examples from data, starting from given index
-#     # and returns the index where it stopped
-#     # also returns the number of sequences skipped (because of lack of native characters)
-#     # and a boolean showing whether generation passed one iteration over data or not
-#
-#     trans_vocab_size = len(trans_to_index)
-#     vocab_size = len(char_to_index)
-#     samples = []
-#     batch_seq_len = 0
-#     non_native_sequences = 0
-#     turned = False
-#
-#     for i in range(batch_size):
-#         while True:
-#             new_p = min(p+seq_len,len(data))
-#             raw_native = data[p:new_p]
-#             if new_p != len(data):
-#                 if max([raw_native.rfind(u' '),raw_native.rfind(u'\t'),raw_native.rfind(u'\n')]) > 0:
-#                     new_p = max([raw_native.rfind(u' '),raw_native.rfind(u'\t'),raw_native.rfind(u'\n')])
-#                     raw_native = ' ' + raw_native[:new_p+1] + ' '
-#                     p += new_p + 1
-#                 else:
-#                     p = new_p + 1
-#                     raw_native = ' ' + raw_native + ' '
-#             else:
-#                 raw_native = ' ' + raw_native + ' '
-#                 p = 0
-#                 turned = True
-#             native_letter_count = sum([1 for c in raw_native if isNativeLetter(c, transliteration)])
-#             if not is_train or native_letter_count * 3 > len(raw_native):
-#                 break
-#             else:
-#                 non_native_sequences += 1
-#
-#         native = []
-#         translit = []
-#         for ind in range(1,len(raw_native)-1):
-#             trans_char = toTranslit(raw_native[ind-1], raw_native[ind], raw_native[ind+1], transliteration)
-#             translit.append(trans_char[0])
-#             trans_ind = 1
-#             native.append(raw_native[ind])
-#             while len(trans_char) > trans_ind:
-#                 native.append(u'\u2000')
-#                 translit.append(trans_char[trans_ind])
-#                 trans_ind += 1
-#
-#         (translit,non_valids) = valid(transliteration, translit)
-#         for ind in range(len(native)):
-#             if translit[ind] == UNKNOWN_CHAR:
-#                 native[ind] = UNKNOWN_CHAR
-#
-#         x = np.zeros((len(native), trans_vocab_size))
-#         y = np.zeros((len(native), vocab_size))
-#         for ind in range(len(native)):
-#             x[ind,trans_to_index[translit[ind]]] = 1
-#             y[ind,char_to_index[native[ind]]] = 1
-#
-#         batch_seq_len = max(batch_seq_len, len(native))
-#         samples.append((x,y))
-#
-#     x = np.zeros((batch_size, batch_seq_len, trans_vocab_size))
-#     y = np.zeros((batch_size, batch_seq_len, vocab_size))
-#
-#     for i in range(batch_size):
-#         x[i, : len(samples[i][0]), :] = samples[i][0]
-#         y[i, : len(samples[i][1]), :] = samples[i][1]
-#         for j in range(len(samples[i][0]), batch_seq_len):
-#             x[i, j, trans_to_index[u'\u2001']] = 1
-#             y[i, j, char_to_index[u'\u2001']] = 1
-#
-#     if is_train:
-#         return (x,y,p,turned,non_native_sequences)
-#
-#     else:
-#         return (x,y,non_valids,p,turned)
-#
-
-
-def define_model(hdim, depth, trans_vocab_size=0, vocab_size=0, is_train = False):
-    input_input = Input(shape=(None, trans_vocab_size))
-    layer = input_input
-
-    for _ in range(depth):
-        layer = Bidirectional(LSTM(hdim, return_sequences=True, return_state=False))(layer)
-        layer = Dense(hdim)(layer)
-
-    layer = Bidirectional(LSTM(hdim, return_sequences=True, return_state=False))(layer)
-    layer = Dense(hdim)(layer)
-    layer = Concatenate()([layer, input_input])
-    layer = Dense(vocab_size, activation='softmax')(layer)
-
-    model = Model(inputs=input_input, outputs=layer)
-
-    model.compile(optimizer="adam", # rmsprop,
-                  loss="categorical_crossentropy",
-                  metrics=["accuracy"])
-
-    return model
-
-
-# def define_model(N_HIDDEN, depth, LEARNING_RATE = 0.01,  GRAD_CLIP = 100, trans_vocab_size=0, vocab_size=0, is_train = False):
-#
-#     # Defines lasagne model
-#     # Returns output layer and theano functions for training and computing the cost
-#
-#     l_input = lasagne.layers.InputLayer(shape=(None, None, trans_vocab_size))
-#     network = l_input
-#     symbolic_batch_size = lasagne.layers.get_output(network).shape[0]
-#
-#     while depth > 0 :
-#
-#         l_forward = lasagne.layers.LSTMLayer(
-#             network, N_HIDDEN, grad_clipping=GRAD_CLIP,
-#             ingate=lasagne.layers.Gate(
-#                                     W_in=Orthogonal(gain=1.5),
-#                                     W_hid=Orthogonal(gain=1.5),
-#                                     W_cell=Normal(0.1)),
-#             forgetgate=lasagne.layers.Gate(
-#                                     W_in=Orthogonal(gain=1.5),
-#                                     W_hid=Orthogonal(gain=1.5),
-#                                     W_cell=Normal(0.1)),
-#             cell=lasagne.layers.Gate(W_cell=None,
-#                                     nonlinearity=lasagne.nonlinearities.tanh,
-#                                     W_in=Orthogonal(gain=1.5),
-#                                     W_hid=Orthogonal(gain=1.5)),
-#             outgate=lasagne.layers.Gate(
-#                                     W_in=Orthogonal(gain=1.5),
-#                                     W_hid=Orthogonal(gain=1.5),
-#                                     W_cell=Normal(0.1)),
-#             backwards=False
-#             )
-#         l_backward = lasagne.layers.LSTMLayer(
-#             network, N_HIDDEN, grad_clipping=GRAD_CLIP,
-#             ingate=lasagne.layers.Gate(
-#                                     W_in=Orthogonal(gain=1.5),
-#                                     W_hid=Orthogonal(gain=1.5),
-#                                     W_cell=Normal(0.1)),
-#             forgetgate=lasagne.layers.Gate(
-#                                     W_in=Orthogonal(gain=1.5),
-#                                     W_hid=Orthogonal(gain=1.5),
-#                                     W_cell=Normal(0.1)),
-#             cell=lasagne.layers.Gate(W_cell=None,
-#                                     nonlinearity=lasagne.nonlinearities.tanh,
-#                                     W_in=Orthogonal(gain=1.5),
-#                                     W_hid=Orthogonal(gain=1.5)),
-#             outgate=lasagne.layers.Gate(
-#                                     W_in=Orthogonal(gain=1.5),
-#                                     W_hid=Orthogonal(gain=1.5),
-#                                     W_cell=Normal(0.1)),
-#             backwards=True
-#             )
-#
-#         if depth == 1:
-#             l_cell_forward = LSTMLayer(
-#                 network, N_HIDDEN, grad_clipping=GRAD_CLIP,
-#                 ingate=lasagne.layers.Gate(
-#                                         W_in=l_forward.W_in_to_ingate,
-#                                         W_hid=l_forward.W_hid_to_ingate,
-#                                        # W_cell=l_forward.W_cell_to_ingate,
-#                                         b=l_forward.b_ingate),
-#                 forgetgate=lasagne.layers.Gate(
-#                                         W_in=l_forward.W_in_to_forgetgate,
-#                                         W_hid=l_forward.W_hid_to_forgetgate,
-#                                       # W_cell=l_forward.W_cell_to_forgetgate,
-#                                         b=l_forward.b_forgetgate),
-#                 cell=lasagne.layers.Gate(W_cell=None,
-#                                         nonlinearity=lasagne.nonlinearities.tanh,
-#                                         W_in=l_forward.W_in_to_cell,
-#                                         W_hid=l_forward.W_hid_to_cell,
-#                                         b=l_forward.b_cell),
-#                 outgate=lasagne.layers.Gate(
-#                                         W_in=l_forward.W_in_to_outgate,
-#                                         W_hid=l_forward.W_hid_to_outgate,
-#                                        # W_cell=l_forward.W_cell_to_outgate,
-#                                         b=l_forward.b_outgate),
-#                 backwards=False,
-#                 peepholes=False)
-#
-#             l_cell_backwards = LSTMLayer(
-#                 network, N_HIDDEN, grad_clipping=GRAD_CLIP,
-#                 ingate=lasagne.layers.Gate(
-#                                         W_in=l_backward.W_in_to_ingate,
-#                                         W_hid=l_backward.W_hid_to_ingate,
-#                                        # W_cell=l_backward.W_cell_to_ingate,
-#                                         b=l_backward.b_ingate),
-#                 forgetgate=lasagne.layers.Gate(
-#                                         W_in=l_backward.W_in_to_forgetgate,
-#                                         W_hid=l_backward.W_hid_to_forgetgate,
-#                                        # W_cell=l_backward.W_cell_to_forgetgate,
-#                                         b=l_backward.b_forgetgate),
-#                 cell=lasagne.layers.Gate(W_cell=None,
-#                                         nonlinearity=lasagne.nonlinearities.tanh,
-#                                         W_in=l_backward.W_in_to_cell,
-#                                         W_hid=l_backward.W_hid_to_cell,
-#                                         b=l_backward.b_cell),
-#                 outgate=lasagne.layers.Gate(
-#                                         W_in=l_backward.W_in_to_outgate,
-#                                         W_hid=l_backward.W_hid_to_outgate,
-#                                        # W_cell=l_backward.W_cell_to_outgate,
-#                                         b=l_backward.b_outgate),
-#                 backwards=True,
-#                 peepholes=False)
-#
-#         concat_layer = lasagne.layers.ConcatLayer(incomings=[l_forward, l_backward], axis = 2)
-#         concat_layer = lasagne.layers.ReshapeLayer(concat_layer, (-1, 2*N_HIDDEN))
-#         network = lasagne.layers.DenseLayer(concat_layer, num_units=N_HIDDEN, W = Orthogonal(), nonlinearity=lasagne.nonlinearities.tanh)
-#         network = lasagne.layers.ReshapeLayer(network, (symbolic_batch_size, -1, N_HIDDEN))
-#
-#         depth -= 1
-#
-#
-#
-#     network = lasagne.layers.ReshapeLayer(network, (-1, N_HIDDEN) )
-#     l_input_reshape = lasagne.layers.ReshapeLayer(l_input, (-1, trans_vocab_size))
-#     network = lasagne.layers.ConcatLayer(incomings=[network,l_input_reshape], axis = 1)
-#
-#     l_out = lasagne.layers.DenseLayer(network, num_units=vocab_size, W = lasagne.init.Normal(), nonlinearity=lasagne.nonlinearities.softmax)   ?????????
-#
-#     target_values = T.dmatrix('target_output')
-#
-#     network_output = lasagne.layers.get_output(l_out)
-#     network = lasagne.layers.get_output(network)
-#     concat_layer = lasagne.layers.get_output(concat_layer)
-#     last_lstm_cells_forward = lasagne.layers.get_output(l_cell_forward)
-#     last_lstm_cells_backwards = lasagne.layers.get_output(l_cell_backwards)
-#     # gates = l_cell_forward.get_gates()
-#
-#
-#     cost = T.nnet.categorical_crossentropy(network_output,target_values).mean()
-#
-#     all_params = lasagne.layers.get_all_params(l_out,trainable=True)
-#
-#
-#     print("Compiling Functions ...")
-#
-#     if is_train:
-#
-#         print("Computing Updates ...")
-#         # updates = lasagne.updates.adagrad(cost, all_params, LEARNING_RATE)
-#         updates = lasagne.updates.adam(cost, all_params, beta1=0.5, learning_rate=LEARNING_RATE) # from DCGAN paper
-#
-#         compute_cost = theano.function([l_input.input_var, target_values], cost, allow_input_downcast=True)
-#         train = theano.function([l_input.input_var, target_values], cost, updates=updates, allow_input_downcast=True)
-#         return(l_out, train, compute_cost)
-#
-#     else:
-#         guess = theano.function([l_input.input_var],
-#                                 [network_output, network, concat_layer,
-#                                 last_lstm_cells_forward, last_lstm_cells_backwards
-#                                 # gates[0], gates[1], gates[2]
-#                                 ],
-#                                 allow_input_downcast=True)
-#         return(l_out, guess)
-#
 
 
 def is_delimiter(c):
     return c in ['\n', '\t', ' ']
+
+# if is_train:
+    #     # train_text = codecs.open(TRAIN_DATA_PATH, encoding='utf-8').read()
+    #     train_text = open_file_list(TRAIN_DATA_PATH_LIST)
+    #     # val_text = codecs.open(VALIDATION_DATA_PATH, encoding='utf-8').read()
+    #     val_text = open_file_list(VALIDATION_DATA_PATH_LIST)
+    #
+    #     for letter in long_letter_mapping:
+    #         train_text = train_text.replace(letter, long_letter_mapping[letter])
+    #         val_text = val_text.replace(letter, long_letter_mapping[letter])
+    #
+    #     return train_text, val_text, trans
+    # else:
+    #     # test_text = codecs.open(TEST_DATA_PATH, encoding='utf-8').read()
+    #     test_text = open_file_list(TEST_DATA_PATH_LIST)
+    #     for letter in long_letter_mapping:
+    #         test_text = test_text.replace(letter, long_letter_mapping[letter])
+    #     long_letter_reverse_mapping = {long_letter_mapping[i]: i for i in long_letter_mapping}
+    #
+    #     return test_text, trans, long_letter_reverse_mapping
+
+
+def generator_biniries(chunk, seq_len, vocab_to_index):
+    vocab_size = len(vocab_to_index)
+    chunk_size = len(chunk)
+
+    print("Spliting to sequences.")
+
+    seqs = []
+    word = ''
+    i = 0
+    seq = ''
+    while i < chunk_size:
+        if i % 100000 == 0:
+            print(i / chunk_size, "% splitted to sequences.", end='\r')
+        if is_delimiter(chunk[i]):
+            # if word != '':
+            #         words.append(word)
+            # word = ''
+            delimiter = chunk[i]
+            while i + 1 < len(chunk) and is_delimiter(chunk[i + 1]):
+                i += 1
+                delimiter += chunk[i]
+            if len(seq) + len(word) + len(delimiter) < seq_len:
+                seq += word + delimiter
+            else:
+                seqs.append(seq)
+                seq = word + delimiter
+            word = ''
+            # delimiters.append(delimiter)
+        else:
+            word += chunk[i]
+        i += 1
+
+    if word != '':
+        if len(seq) + len(word) < seq_len:
+            seq += word
+            word = ''
+    if seq != '':
+        seqs.append(seq)
+        seq = ''
+
+    print()
+    print("Sequences count:", len(seqs))
+    print("Creating samples.")
+
+    x = np.zeros((len(seqs), seq_len, vocab_size))
+    for i in range(len(seqs)):
+        for j in range(min(len(seqs[i]), seq_len)):
+            # print(seqs[i][j], end=' ')
+            # print(ord(seqs[i][j]), end=' ')
+            x[i, j, vocab_to_index[seqs[i][j]]] = 1
+
+    return x
 
 
 def chunk_parse(chunk, seq_len, transliteration, trans_to_index, char_to_index, is_train=False):
@@ -721,6 +472,241 @@ def chunk_parse(chunk, seq_len, transliteration, trans_to_index, char_to_index, 
             np_batches.append( (x, y, indices, delimiters) )
 
         return np_batches, non_vals
+        
+# def gen_data(p, seq_len, batch_size, data, transliteration, trans_to_index, char_to_index, is_train = True):
+#
+#     # Generates training examples from data, starting from given index
+#     # and returns the index where it stopped
+#     # also returns the number of sequences skipped (because of lack of native characters)
+#     # and a boolean showing whether generation passed one iteration over data or not
+#
+#     trans_vocab_size = len(trans_to_index)
+#     vocab_size = len(char_to_index)
+#     samples = []
+#     batch_seq_len = 0
+#     non_native_sequences = 0
+#     turned = False
+#
+#     for i in range(batch_size):
+#         while True:
+#             new_p = min(p+seq_len,len(data))
+#             raw_native = data[p:new_p]
+#             if new_p != len(data):
+#                 if max([raw_native.rfind(u' '),raw_native.rfind(u'\t'),raw_native.rfind(u'\n')]) > 0:
+#                     new_p = max([raw_native.rfind(u' '),raw_native.rfind(u'\t'),raw_native.rfind(u'\n')])
+#                     raw_native = ' ' + raw_native[:new_p+1] + ' '
+#                     p += new_p + 1
+#                 else:
+#                     p = new_p + 1
+#                     raw_native = ' ' + raw_native + ' '
+#             else:
+#                 raw_native = ' ' + raw_native + ' '
+#                 p = 0
+#                 turned = True
+#             native_letter_count = sum([1 for c in raw_native if isNativeLetter(c, transliteration)])
+#             if not is_train or native_letter_count * 3 > len(raw_native):
+#                 break
+#             else:
+#                 non_native_sequences += 1
+#
+#         native = []
+#         translit = []
+#         for ind in range(1,len(raw_native)-1):
+#             trans_char = toTranslit(raw_native[ind-1], raw_native[ind], raw_native[ind+1], transliteration)
+#             translit.append(trans_char[0])
+#             trans_ind = 1
+#             native.append(raw_native[ind])
+#             while len(trans_char) > trans_ind:
+#                 native.append(u'\u2000')
+#                 translit.append(trans_char[trans_ind])
+#                 trans_ind += 1
+#
+#         (translit,non_valids) = valid(transliteration, translit)
+#         for ind in range(len(native)):
+#             if translit[ind] == UNKNOWN_CHAR:
+#                 native[ind] = UNKNOWN_CHAR
+#
+#         x = np.zeros((len(native), trans_vocab_size))
+#         y = np.zeros((len(native), vocab_size))
+#         for ind in range(len(native)):
+#             x[ind,trans_to_index[translit[ind]]] = 1
+#             y[ind,char_to_index[native[ind]]] = 1
+#
+#         batch_seq_len = max(batch_seq_len, len(native))
+#         samples.append((x,y))
+#
+#     x = np.zeros((batch_size, batch_seq_len, trans_vocab_size))
+#     y = np.zeros((batch_size, batch_seq_len, vocab_size))
+#
+#     for i in range(batch_size):
+#         x[i, : len(samples[i][0]), :] = samples[i][0]
+#         y[i, : len(samples[i][1]), :] = samples[i][1]
+#         for j in range(len(samples[i][0]), batch_seq_len):
+#             x[i, j, trans_to_index[u'\u2001']] = 1
+#             y[i, j, char_to_index[u'\u2001']] = 1
+#
+#     if is_train:
+#         return (x,y,p,turned,non_native_sequences)
+#
+#     else:
+#         return (x,y,non_valids,p,turned)
+#
+
+
+# def define_model(N_HIDDEN, depth, LEARNING_RATE = 0.01,  GRAD_CLIP = 100, trans_vocab_size=0, vocab_size=0, is_train = False):
+#
+#     # Defines lasagne model
+#     # Returns output layer and theano functions for training and computing the cost
+#
+#     l_input = lasagne.layers.InputLayer(shape=(None, None, trans_vocab_size))
+#     network = l_input
+#     symbolic_batch_size = lasagne.layers.get_output(network).shape[0]
+#
+#     while depth > 0 :
+#
+#         l_forward = lasagne.layers.LSTMLayer(
+#             network, N_HIDDEN, grad_clipping=GRAD_CLIP,
+#             ingate=lasagne.layers.Gate(
+#                                     W_in=Orthogonal(gain=1.5),
+#                                     W_hid=Orthogonal(gain=1.5),
+#                                     W_cell=Normal(0.1)),
+#             forgetgate=lasagne.layers.Gate(
+#                                     W_in=Orthogonal(gain=1.5),
+#                                     W_hid=Orthogonal(gain=1.5),
+#                                     W_cell=Normal(0.1)),
+#             cell=lasagne.layers.Gate(W_cell=None,
+#                                     nonlinearity=lasagne.nonlinearities.tanh,
+#                                     W_in=Orthogonal(gain=1.5),
+#                                     W_hid=Orthogonal(gain=1.5)),
+#             outgate=lasagne.layers.Gate(
+#                                     W_in=Orthogonal(gain=1.5),
+#                                     W_hid=Orthogonal(gain=1.5),
+#                                     W_cell=Normal(0.1)),
+#             backwards=False
+#             )
+#         l_backward = lasagne.layers.LSTMLayer(
+#             network, N_HIDDEN, grad_clipping=GRAD_CLIP,
+#             ingate=lasagne.layers.Gate(
+#                                     W_in=Orthogonal(gain=1.5),
+#                                     W_hid=Orthogonal(gain=1.5),
+#                                     W_cell=Normal(0.1)),
+#             forgetgate=lasagne.layers.Gate(
+#                                     W_in=Orthogonal(gain=1.5),
+#                                     W_hid=Orthogonal(gain=1.5),
+#                                     W_cell=Normal(0.1)),
+#             cell=lasagne.layers.Gate(W_cell=None,
+#                                     nonlinearity=lasagne.nonlinearities.tanh,
+#                                     W_in=Orthogonal(gain=1.5),
+#                                     W_hid=Orthogonal(gain=1.5)),
+#             outgate=lasagne.layers.Gate(
+#                                     W_in=Orthogonal(gain=1.5),
+#                                     W_hid=Orthogonal(gain=1.5),
+#                                     W_cell=Normal(0.1)),
+#             backwards=True
+#             )
+#
+#         if depth == 1:
+#             l_cell_forward = LSTMLayer(
+#                 network, N_HIDDEN, grad_clipping=GRAD_CLIP,
+#                 ingate=lasagne.layers.Gate(
+#                                         W_in=l_forward.W_in_to_ingate,
+#                                         W_hid=l_forward.W_hid_to_ingate,
+#                                        # W_cell=l_forward.W_cell_to_ingate,
+#                                         b=l_forward.b_ingate),
+#                 forgetgate=lasagne.layers.Gate(
+#                                         W_in=l_forward.W_in_to_forgetgate,
+#                                         W_hid=l_forward.W_hid_to_forgetgate,
+#                                       # W_cell=l_forward.W_cell_to_forgetgate,
+#                                         b=l_forward.b_forgetgate),
+#                 cell=lasagne.layers.Gate(W_cell=None,
+#                                         nonlinearity=lasagne.nonlinearities.tanh,
+#                                         W_in=l_forward.W_in_to_cell,
+#                                         W_hid=l_forward.W_hid_to_cell,
+#                                         b=l_forward.b_cell),
+#                 outgate=lasagne.layers.Gate(
+#                                         W_in=l_forward.W_in_to_outgate,
+#                                         W_hid=l_forward.W_hid_to_outgate,
+#                                        # W_cell=l_forward.W_cell_to_outgate,
+#                                         b=l_forward.b_outgate),
+#                 backwards=False,
+#                 peepholes=False)
+#
+#             l_cell_backwards = LSTMLayer(
+#                 network, N_HIDDEN, grad_clipping=GRAD_CLIP,
+#                 ingate=lasagne.layers.Gate(
+#                                         W_in=l_backward.W_in_to_ingate,
+#                                         W_hid=l_backward.W_hid_to_ingate,
+#                                        # W_cell=l_backward.W_cell_to_ingate,
+#                                         b=l_backward.b_ingate),
+#                 forgetgate=lasagne.layers.Gate(
+#                                         W_in=l_backward.W_in_to_forgetgate,
+#                                         W_hid=l_backward.W_hid_to_forgetgate,
+#                                        # W_cell=l_backward.W_cell_to_forgetgate,
+#                                         b=l_backward.b_forgetgate),
+#                 cell=lasagne.layers.Gate(W_cell=None,
+#                                         nonlinearity=lasagne.nonlinearities.tanh,
+#                                         W_in=l_backward.W_in_to_cell,
+#                                         W_hid=l_backward.W_hid_to_cell,
+#                                         b=l_backward.b_cell),
+#                 outgate=lasagne.layers.Gate(
+#                                         W_in=l_backward.W_in_to_outgate,
+#                                         W_hid=l_backward.W_hid_to_outgate,
+#                                        # W_cell=l_backward.W_cell_to_outgate,
+#                                         b=l_backward.b_outgate),
+#                 backwards=True,
+#                 peepholes=False)
+#
+#         concat_layer = lasagne.layers.ConcatLayer(incomings=[l_forward, l_backward], axis = 2)
+#         concat_layer = lasagne.layers.ReshapeLayer(concat_layer, (-1, 2*N_HIDDEN))
+#         network = lasagne.layers.DenseLayer(concat_layer, num_units=N_HIDDEN, W = Orthogonal(), nonlinearity=lasagne.nonlinearities.tanh)
+#         network = lasagne.layers.ReshapeLayer(network, (symbolic_batch_size, -1, N_HIDDEN))
+#
+#         depth -= 1
+#
+#
+#
+#     network = lasagne.layers.ReshapeLayer(network, (-1, N_HIDDEN) )
+#     l_input_reshape = lasagne.layers.ReshapeLayer(l_input, (-1, trans_vocab_size))
+#     network = lasagne.layers.ConcatLayer(incomings=[network,l_input_reshape], axis = 1)
+#
+#     l_out = lasagne.layers.DenseLayer(network, num_units=vocab_size, W = lasagne.init.Normal(), nonlinearity=lasagne.nonlinearities.softmax)   ?????????
+#
+#     target_values = T.dmatrix('target_output')
+#
+#     network_output = lasagne.layers.get_output(l_out)
+#     network = lasagne.layers.get_output(network)
+#     concat_layer = lasagne.layers.get_output(concat_layer)
+#     last_lstm_cells_forward = lasagne.layers.get_output(l_cell_forward)
+#     last_lstm_cells_backwards = lasagne.layers.get_output(l_cell_backwards)
+#     # gates = l_cell_forward.get_gates()
+#
+#
+#     cost = T.nnet.categorical_crossentropy(network_output,target_values).mean()
+#
+#     all_params = lasagne.layers.get_all_params(l_out,trainable=True)
+#
+#
+#     print("Compiling Functions ...")
+#
+#     if is_train:
+#
+#         print("Computing Updates ...")
+#         # updates = lasagne.updates.adagrad(cost, all_params, LEARNING_RATE)
+#         updates = lasagne.updates.adam(cost, all_params, beta1=0.5, learning_rate=LEARNING_RATE) # from DCGAN paper
+#
+#         compute_cost = theano.function([l_input.input_var, target_values], cost, allow_input_downcast=True)
+#         train = theano.function([l_input.input_var, target_values], cost, updates=updates, allow_input_downcast=True)
+#         return(l_out, train, compute_cost)
+#
+#     else:
+#         guess = theano.function([l_input.input_var],
+#                                 [network_output, network, concat_layer,
+#                                 last_lstm_cells_forward, last_lstm_cells_backwards
+#                                 # gates[0], gates[1], gates[2]
+#                                 ],
+#                                 allow_input_downcast=True)
+#         return(l_out, guess)
+#
 
 
 def text_to_one_hot_matrix(text, language='hy'):
@@ -757,6 +743,25 @@ def data_generator(data, seq_len, transliteration, trans_to_index, char_to_index
     #     p += 700000
     #     for batch in zip(parsed_data, non_valids):
     #         yield batch
+
+
+def get_model_file_path(args, begin_fit_time, loss):
+    dir = get_model_dir_path(args)
+    now = datetime.now()
+    file = '{}.hdim{}.depth{}.seq_len{}.bs{}.time{:.3f}.epoch{}.loss{:.3f}.h5'.format(
+        args.prefix, args.hdim, args.depth, args.seq_len, args.batch_size, (now - begin_fit_time).total_seconds() / 60, args.epoch, loss)
+    return dir + '/' + file
+
+
+def get_model_dir_path(args):
+    if args.model_path:
+        dir =  args.model_path
+    else:
+        now = datetime.now()
+        dir = 'languages/{}/models/{}-{}-{}--{}-{}'.format(args.language, str(now.day), str(now.month), str(now.year), str(now.hour), str(now.minute))
+    if not os.path.exists(dir):
+        os.mkdir(dir)
+    return dir
 
 
 # """
@@ -1294,25 +1299,7 @@ def data_generator(data, seq_len, transliteration, trans_to_index, char_to_index
 #         concat = T.concatenate([ingate, forgetgate, outgate, cell_input, cell_out], axis=2)
 #         return concat
 
-
-def get_model_dir_path(args):
-    if args.model_path:
-        dir =  args.model_path
-    else:
-        now = datetime.now()
-        dir = 'languages/{}/models/{}-{}-{}--{}-{}'.format(args.language, str(now.day), str(now.month), str(now.year), str(now.hour), str(now.minute))
-    if not os.path.exists(dir):
-        os.mkdir(dir)
-    return dir
-
-
-def get_model_file_path(args, begin_fit_time, loss):
-    dir = get_model_dir_path(args)
-    now = datetime.now()
-    file = '{}.hdim{}.depth{}.seq_len{}.bs{}.time{:.3f}.epoch{}.loss{:.3f}.h5'.format(
-        args.prefix, args.hdim, args.depth, args.seq_len, args.batch_size, (now - begin_fit_time).total_seconds() / 60, args.epoch, loss)
-    return dir + '/' + file
-
+#################################################################################################################################3
 
 def save_acc_loss_results(args, history, save_or_show=True):
     dir = get_model_dir_path(args)
@@ -1345,6 +1332,67 @@ def save_acc_loss_results(args, history, save_or_show=True):
     else:
         plt.show()
 
+def load_preprocessed_data(languages, data_size, type = "train"):
+    '''
+    type must be 'train', 'test' or 'val'
+    '''
+
+    if type not in ['train', 'test', 'val']:
+        raise Exception("Not valid input")
+    text = ""
+    trans_text = ""
+    for key, value in languages.items():
+        print("Load preprocessed data for: " + key + ":" + ','.join(value))
+
+        if len(value) == 0:
+            dirs = glob.glob('data_preprocessed/' + key + "/mapping_to_*")
+        else:
+            dirs = []
+            dirs.extend(['data_preprocessed/' + key + "/mapping_to_" + i for i in value])
+
+        print("--Found dirs:" + ','.join(dirs))
+        for dir in dirs:
+            files = glob.glob(dir + "/" + type + "*.txt")
+            text += open_file_list(files, data_size)
+            files_translate = [k + "_translate" for k in files]
+            trans_text += open_file_list(files_translate, data_size)
+
+    assert len(text) == len(trans_text)
+
+    return text, trans_text
+
+
+def load_data(language, long_letters_start, data_size, is_train=True):
+
+    TRAIN_DATA_PATH_LIST = glob.glob('data/' + language + '/train*.txt')
+    VALIDATION_DATA_PATH_LIST = glob.glob('data/' + language + '/val*.txt')
+    TEST_DATA_PATH_LIST = glob.glob('data/' + language + '/test*.txt')
+    long_letters = json.loads(codecs.open('mappings/' + language + '/long_letters.json', 'r', encoding='utf-8').read())
+    long_letter_mapping = {long_letters[i]: chr(ord(u'\u2002') + i + long_letters_start) for i in range(len(long_letters))}
+    trans = json.loads(codecs.open('languages/' + language + '/transliteration.json', 'r', encoding='utf-8').read())
+    tmp_trans = trans.copy()
+    for c in tmp_trans:
+        if c in long_letters:
+            trans[long_letter_mapping[c]] = trans[c]
+    del tmp_trans
+
+    if is_train:
+        train_text = open_file_list(TRAIN_DATA_PATH_LIST, data_size)
+        valid_text = open_file_list(TRAIN_DATA_PATH_LIST, data_size)
+        return train_text, valid_text, trans
+    else:
+        data = open_file_list(TRAIN_DATA_PATH_LIST, data_size)
+        if len(data) < data_size:
+            data += open_file_list(VALIDATION_DATA_PATH_LIST, data_size)
+        if len(data) < data_size:
+            data += open_file_list(TEST_DATA_PATH_LIST, data_size)
+        data = data[:data_size]
+
+        for letter in long_letter_mapping:
+            data = data.replace(letter, long_letter_mapping[letter])
+
+        return data, trans
+
 
 def write_results_file(args, history, train_text, val_text):
     dir = get_model_dir_path(args)
@@ -1370,3 +1418,53 @@ def write_results_file(args, history, train_text, val_text):
 
     with open(file_name, 'w') as outfile:
         yaml.dump(data, outfile, default_flow_style=False)
+
+
+def load_vocabulary(languages):
+    '''
+    languages is list of languages
+    files like data_preprocessed/hy_char_to_index.json
+               data_preprocessed/hy_index_to_char.json
+               data_preprocessed/hy_trans_to_index.json
+               data_preprocessed/hy_index_to_trans.json
+
+    :param languages: list of languages
+    :return:
+    '''
+
+    ### Loads vocabulary mappings from specified json files
+
+    lngs = '_'.join(languages)
+
+    char_to_index = json.loads(open('data_preprocessed/' + lngs + '_char_to_index.json').read())
+    char_to_index = {i: int(char_to_index[i]) for i in char_to_index}
+
+    index_to_char = json.loads(open('data_preprocessed/' + lngs + '_index_to_char.json').read())
+    index_to_char = {int(i): index_to_char[i] for i in index_to_char}
+    vocab_size = len(char_to_index)
+
+
+    trans_to_index = json.loads(open('data_preprocessed/' + lngs + '_trans_to_index.json').read())
+    trans_to_index = {i: int(trans_to_index[i]) for i in trans_to_index}
+
+    index_to_trans = json.loads(open('data_preprocessed/' + lngs + '_index_to_trans.json').read())
+    index_to_trans = {int(i): index_to_trans[i] for i in index_to_trans}
+    trans_vocab_size = len(trans_to_index)
+
+    return char_to_index, index_to_char, vocab_size, trans_to_index, index_to_trans, trans_vocab_size
+
+
+def parse_languages(languages):
+    lngs = {}
+    list = languages.split(',')
+    for lng in list:
+        l = lng.split('-')
+        if len(l) == 1:
+            lngs[l[0]] = []
+        elif len(l) == 2:
+            if l[0] not in lngs:
+                lngs[l[0]] = []
+            lngs[l[0]].append(l[1])
+        else:
+            print(lng + " is not valid input")
+    return lngs

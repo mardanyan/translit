@@ -48,3 +48,25 @@ The actual training is initiated by a command like this:
 ## Predict
 
     python predict.py --model=languages/hy-AM/models/model.20-4-2019--20-47.hdim1024.depth2.seq_len30.bs100.time5.931.epoch10.loss0.082.h5
+ 
+ 
+# Pipeline 
+
+#extract xml files into small
+    python WikiExtractor.py -b=50M enwiki-20190420-pages-articles-multistream.xml
+    
+    sed -i -e "/<\/doc/d" *
+    sed -i -e "/<doc/d" *
+    sed  -i '/^[[:space:]]*$/d' *
+    
+# preprocess data for hy    
+    python data_preprocessed.py --language=hy
+# preprocess data for ru 
+    python data_preprocessed.py --language=ru
+    
+# create indexes mapping
+    python create_indexes.py --languages=hy --data_size=50_000_000
+    
+# train model by specifying preprocessed data
+    python train.py --depth=10 --seq_len=30 --data_size=5_000 --languages=hy-en,hy-ru,ru-en    
+    python train.py --depth=10 --seq_len=30 --data_size=5_000 --languages=hy,ru-en

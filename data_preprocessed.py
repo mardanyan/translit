@@ -8,10 +8,16 @@ import glob
 import utils
 import os
 
-def main():
-    parser = argparse.ArgumentParser(description='''Train you model specifying parameters''')
-    parser.add_argument('--language', default="hy", help='Specify language to train.')
 
+def main():
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter, description='''
+    Train you model specifying parameters
+    
+    Usage:
+        python data_preprocessed.py --language=hy
+    
+    ''')
+    parser.add_argument('--language', default="hy", help='Specify language to train.')
     args = parser.parse_args()
 
     mappings = glob.glob('mappings/' + args.language + '/mapping_to_*.json')
@@ -48,10 +54,10 @@ def process_mapping_to(mapping_to, language, data_file_list):
         data = open(file_path, encoding='utf-8').read()
         for letter in long_letter_mapping:
             data = data.replace(letter, long_letter_mapping[letter])
-        samples = data_generator(data, language, mapping, long_letter_mapping)
+        samples = create_samples(data, mapping)
         base_name = os.path.basename(file_path)
         orig_file = "data_preprocessed/{}/mapping_to_{}/{}".format(language, to_language, base_name)
-        translage_file = "data_preprocessed/{}/mapping_to_{}/translate_{}".format(language, to_language, base_name)
+        translage_file = "data_preprocessed/{}/mapping_to_{}/{}_translate".format(language, to_language, base_name)
         print(orig_file)
         print(translage_file)
 
@@ -64,7 +70,7 @@ def process_mapping_to(mapping_to, language, data_file_list):
                 file.write(''.join(s[0]))
 
 
-def data_generator(chunk, language, mapping_to, long_letter_mapping):
+def create_samples(chunk, mapping_to):
     # return ''
 
     seq_len = 500
@@ -107,6 +113,8 @@ def data_generator(chunk, language, mapping_to, long_letter_mapping):
     print()
     print("Creating samples.")
 
+    valids = utils.get_valid_chars(mapping_to)
+
     seq_size = len(seqs)
     # create list of groups with 3 elements, original/translated/non valid chars
     samples = []
@@ -138,7 +146,7 @@ def data_generator(chunk, language, mapping_to, long_letter_mapping):
         # Թ\u2000 -> Th
 
         # validate both texts, changing unknown chars with #
-        translit, non_valids = utils.valid(mapping_to, translit)
+        translit, non_valids = utils.validate(valids, translit)
         for ind in range(len(native)):
             if translit[ind] == utils.UNKNOWN_CHAR:
                 native[ind] = utils.UNKNOWN_CHAR
