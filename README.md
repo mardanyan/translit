@@ -104,3 +104,6 @@ Armenian Wikipedia as the easiest available large corpus of Armenian text. The d
 
 In the repository provided best models for different combinations of transliteration.
 
+
+# Thanks
+Special thanks to [Adam Bittlingmayer](https://www.linkedin.com/in/bittlingmayer) and [YerevanN](http://yerevann.github.io/) to valuable advices.
