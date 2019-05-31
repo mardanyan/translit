@@ -2,8 +2,3 @@ numpy==1.16.2
 matplotlib==3.0.3
 keras==2.2.4
 pillow==6.0.0
-
-#Theano==0.7.0
-#Lasagne>=0.1
-#editdistance>=0.3.1 == 0.5.3
-
