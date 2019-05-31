@@ -1,4 +1,4 @@
-# Automatic transliteration
+# Multilingual transliteration
 
 Many languages have their own non-Latin alphabets but the web is full of content in those languages written in Latin letters, which makes it inaccessible to various NLP tools (e.g. automatic translation). Transliteration is the process of converting the romanized text back to the original writing system. In theory every language has a strict set of romanization rules, but in practice people do not follow the rules and most of the romanized content is hard to transliterate using rule based algorithms. We believe this problem is solvable using the state of the art NLP tools, and we demonstrate a high quality solution for Armenian based on recurrent neural networks.
 This is a tool to transliterate inconsistently romanized text. It is tested on Armenian (hy-AM)
@@ -58,15 +58,27 @@ The actual training is initiated by a command like this:
     sed -i -e "/<\/doc/d" *
     sed -i -e "/<doc/d" *
     sed  -i '/^[[:space:]]*$/d' *
-    
+
+## Step 1    
 # preprocess data for hy    
     python data_preprocessed.py --language=hy
 # preprocess data for ru 
     python data_preprocessed.py --language=ru
     
+## Step 2
 # create indexes mapping
     python create_indexes.py --languages=hy --data_size=50_000_000
     
+## Step 3    
 # train model by specifying preprocessed data
-    python train.py --depth=10 --seq_len=30 --data_size=5_000 --languages=hy-en,hy-ru,ru-en    
-    python train.py --depth=10 --seq_len=30 --data_size=5_000 --languages=hy,ru-en
+    python train.py --epoch=10 --depth=1 --seq_len=30 --train_size=5_000 --languages=hy-en,hy-ru,ru-en
+    python train.py --epoch=10 --depth=2 --seq_len=30 --train_size=5_000 --languages=hy,ru-en
+    python train.py --epoch=20 --depth=2 --seq_len=30 --train_size=5_000 --languages=hy
+    python train.py --epoch=2 --depth=1 --seq_len=30 --train_size=5_000 --languages=hy
+    
+## Step 4
+# predict 
+python predict.py --language=hy --model=models/2019-5-1_12\:59_hy/m.hy.hdim512.depth1.seq_len30.bs32.time0.200.epoch2.loss2.908.h5    
+python predict.py --language=hy --model=models/2019-5-1_12\:59_hy/m.hy.hdim512.depth1.seq_len30.bs32.time0.200.epoch2.loss2.908.h5
+python predict.py --language=hy-en --model=models/2019-5-1_13\:52_hy-en/m.hy-en.hdim512.depth1.seq_len30.bs32.time2.228.epoch10.loss0.012.h5
+python predict.py --language=hy-en --model=models/2019-5-1_14:25_hy-en/m.hy-en.hdim512.depth1.seq_len30.bs32.time21.582.epoch10.loss0.010.h5
